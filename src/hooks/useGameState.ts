@@ -46,6 +46,7 @@ export interface GameState {
   rebirthCount: number;
   rebirthSkills: RebirthSkill[];
   lifetimePixels: number;
+  totalClicks: number;
 }
 
 // Define rebirth skill tree
@@ -174,7 +175,7 @@ const pixelGenerationUpgrades = [
     id: 'advanced-upgrade',
     name: 'Advanced Upgrade',
     description: 'Triple your click power',
-    cost: 200,
+    cost: 250,
     multiplier: 3,
     purchased: false,
   },
@@ -182,7 +183,7 @@ const pixelGenerationUpgrades = [
     id: 'premium-upgrade',
     name: 'Premium Upgrade',
     description: '5x your click power',
-    cost: 1000,
+    cost: 1250,
     multiplier: 5,
     purchased: false,
   },
@@ -191,7 +192,7 @@ const pixelGenerationUpgrades = [
     id: 'elite-upgrade',
     name: 'Elite Upgrade',
     description: '10x your click power',
-    cost: 5000,
+    cost: 8000,
     multiplier: 10,
     purchased: false,
   },
@@ -199,7 +200,7 @@ const pixelGenerationUpgrades = [
     id: 'quantum-upgrade',
     name: 'Quantum Upgrade',
     description: '25x your click power',
-    cost: 20000,
+    cost: 40000,
     multiplier: 25,
     purchased: false,
   }
@@ -210,7 +211,7 @@ const aiRevolutionUpgrades = [
     id: 'neural-upgrade',
     name: 'Neural Network',
     description: '50x your click power with AI assistance',
-    cost: 100000,
+    cost: 250000,
     multiplier: 50, 
     purchased: false,
   },
@@ -218,7 +219,7 @@ const aiRevolutionUpgrades = [
     id: 'deep-learning',
     name: 'Deep Learning',
     description: '75x your click power with advanced pattern recognition',
-    cost: 250000,
+    cost: 750000,
     multiplier: 75,
     purchased: false,
   },
@@ -226,7 +227,7 @@ const aiRevolutionUpgrades = [
     id: 'ai-sentience',
     name: 'AI Sentience',
     description: '150x your click power with self-aware algorithms',
-    cost: 750000,
+    cost: 2500000,
     multiplier: 150,
     purchased: false,
   }
@@ -237,7 +238,7 @@ const multiversalTechUpgrades = [
     id: 'dimensional-upgrade',
     name: 'Dimensional Shift',
     description: '200x your click power by accessing parallel universes',
-    cost: 3000000,
+    cost: 10000000,
     multiplier: 200,
     purchased: false,
   },
@@ -245,7 +246,7 @@ const multiversalTechUpgrades = [
     id: 'multiverse-harvester',
     name: 'Multiverse Harvester',
     description: '500x your click power by harvesting resources across realities',
-    cost: 10000000,
+    cost: 50000000,
     multiplier: 500,
     purchased: false,
   },
@@ -253,7 +254,7 @@ const multiversalTechUpgrades = [
     id: 'quantum-entanglement',
     name: 'Quantum Entanglement',
     description: '750x your click power by linking all possible outcomes',
-    cost: 50000000,
+    cost: 250000000,
     multiplier: 750,
     purchased: false,
   }
@@ -300,7 +301,7 @@ const basicAutoClickers = [
     id: 'auto-clicker-2',
     name: 'Auto Clicker II',
     description: 'Generates 5 pixels per second',
-    cost: 500,
+    cost: 750,
     pixelsPerSecond: 5,
     count: 0,
   },
@@ -308,7 +309,7 @@ const basicAutoClickers = [
     id: 'auto-clicker-3',
     name: 'Auto Clicker III',
     description: 'Generates 20 pixels per second',
-    cost: 3000,
+    cost: 5000,
     pixelsPerSecond: 20,
     count: 0,
   }
@@ -319,7 +320,7 @@ const industrialAutoClickers = [
     id: 'auto-clicker-4',
     name: 'Pixel Factory',
     description: 'Generates 100 pixels per second',
-    cost: 15000,
+    cost: 30000,
     pixelsPerSecond: 100,
     count: 0,
   },
@@ -327,7 +328,7 @@ const industrialAutoClickers = [
     id: 'pixel-assembly-line',
     name: 'Pixel Assembly Line',
     description: 'Generates 250 pixels per second',
-    cost: 40000,
+    cost: 100000,
     pixelsPerSecond: 250,
     count: 0,
   },
@@ -335,7 +336,7 @@ const industrialAutoClickers = [
     id: 'auto-clicker-5',
     name: 'Pixel Reactor',
     description: 'Generates 500 pixels per second',
-    cost: 100000,
+    cost: 350000,
     pixelsPerSecond: 500,
     count: 0,
   }
@@ -422,7 +423,8 @@ const initialGameState: GameState = {
   rebirthPoints: 0,
   rebirthCount: 0,
   rebirthSkills: initialRebirthSkills,
-  lifetimePixels: 0
+  lifetimePixels: 0,
+  totalClicks: 0
 };
 
 export function useGameState() {
@@ -567,7 +569,8 @@ export function useGameState() {
         ...prevState,
         pixels: newPixels,
         lifetimePixels: newLifetimePixels,
-        societyLevel: newSocietyLevel
+        societyLevel: newSocietyLevel,
+        totalClicks: prevState.totalClicks + 1
       };
     });
   };
@@ -603,32 +606,29 @@ export function useGameState() {
   const buyAutoClicker = (clickerId: string) => {
     setGameState(prevState => {
       const clicker = prevState.autoClickers.find(c => c.id === clickerId);
-      if (!clicker) {
-        return prevState;
-      }
+      if (!clicker || prevState.pixels < clicker.cost) return prevState;
       
-      // Apply rebirth cost reduction if any
+      // Apply rebirth discount if applicable
       const rebirthEffects = getRebirthEffects();
-      const discountedCost = clicker.cost * (1 - rebirthEffects.autoClickerCostReduction);
+      const discountedCost = Math.floor(clicker.cost * rebirthEffects.autoClickerCostReduction);
       
-      if (prevState.pixels < discountedCost) {
-        return prevState;
-      }
-
-      const newCost = Math.floor(clicker.cost * 1.5);
+      // Increased cost scaling - more expensive with each purchase
+      // Base multiplier is 1.15, now it's higher depending on clicker power
+      const costScaleFactor = 1.15 + (clicker.pixelsPerSecond / 1000); // More powerful = steeper cost curve
       
       return {
         ...prevState,
         pixels: prevState.pixels - discountedCost,
-        autoClickers: prevState.autoClickers.map(c => 
-          c.id === clickerId 
-            ? { 
-                ...c, 
-                count: c.count + 1, 
-                cost: newCost 
-              } 
-            : c
-        )
+        autoClickers: prevState.autoClickers.map(c => {
+          if (c.id === clickerId) {
+            return {
+              ...c,
+              count: c.count + 1,
+              cost: Math.floor(c.cost * costScaleFactor)
+            };
+          }
+          return c;
+        })
       };
     });
   };
