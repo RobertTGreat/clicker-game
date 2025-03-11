@@ -26,8 +26,8 @@ export default function StructuresTab({
   scrollRef
 }: StructuresTabProps) {
   return (
-    <div className="p-4 h-full flex flex-col">
-      <h2 className="text-lg font-semibold text-purple-300 mb-4">Structures</h2>
+    <div className="h-full flex flex-col p-3">
+      <h2 className="text-lg font-semibold text-purple-300 mb-3">Structures</h2>
       <div 
         ref={scrollRef}
         className="flex-grow overflow-y-auto custom-scrollbar pr-2" 
@@ -38,7 +38,7 @@ export default function StructuresTab({
         }}
       >
         <div className="space-y-3">
-          <p className="text-sm text-gray-300 mb-4">
+          <p className="text-sm text-gray-300 mb-3">
             Structures automatically generate pixels for you over time.
             Each structure becomes more efficient the more you own.
           </p>

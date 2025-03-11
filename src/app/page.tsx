@@ -4,7 +4,8 @@ import React, { Fragment } from 'react';
 import { useGameState } from '@/hooks/useGameState';
 import { useEffect, useState, useRef, MouseEvent as ReactMouseEvent, ReactNode, ChangeEvent, useCallback, useMemo } from 'react';
 import SidebarLayout from '@/components/SidebarLayout';
-import { PanelId } from '@/types/gameTypes';  // Import updated PanelId type
+import { PanelId, NonNullPanelId } from '@/types/gameTypes';
+import SimpleRain from '@/components/SimpleRain';
 
 // Define panel ID type
 type UpgradeSubTab = 'upgrades' | 'autoClickers' | 'rebirth';
@@ -20,7 +21,7 @@ type PanelState = {
 
 // Define panel states type
 type PanelStates = {
-  [key in PanelId]: PanelState;
+  [key in NonNullPanelId]: PanelState;
 };
 
 // Define settings type
@@ -31,6 +32,35 @@ type Settings = {
   pixelSize: number;
   colorScheme: ColorScheme;
   animationSpeed: AnimationSpeed;
+};
+
+// Theme helper functions
+const themeColors = {
+  blue: {
+    primary: 'rgb(59, 130, 246)',
+    light: 'rgb(96, 165, 250)',
+    dark: 'rgb(29, 78, 216)'
+  },
+  purple: {
+    primary: 'rgb(168, 85, 247)',
+    light: 'rgb(192, 132, 252)',
+    dark: 'rgb(126, 34, 206)'
+  },
+  green: {
+    primary: 'rgb(34, 197, 94)',
+    light: 'rgb(74, 222, 128)',
+    dark: 'rgb(21, 128, 61)'
+  },
+  amber: {
+    primary: 'rgb(245, 158, 11)',
+    light: 'rgb(251, 191, 36)',
+    dark: 'rgb(180, 83, 9)'
+  },
+  rose: {
+    primary: 'rgb(244, 63, 94)',
+    light: 'rgb(251, 113, 133)',
+    dark: 'rgb(190, 18, 60)'
+  }
 };
 
 export default function Home() {
@@ -50,6 +80,10 @@ export default function Home() {
   
   // Active main tab instead of panel states
   const [activeTab, setActiveTab] = useState<PanelId>(null);
+  
+  // Theme state
+  const [isDarkMode, setIsDarkMode] = useState(true);
+  const [themeColor, setThemeColor] = useState('blue');
   
   // Store scroll positions for scrollable containers
   const [scrollPositions, setScrollPositions] = useState<{[key: string]: number}>({
@@ -108,6 +142,30 @@ export default function Home() {
     setIsClient(true);
   }, []);
 
+  // Init theme from localStorage if available
+  useEffect(() => {
+    if (isClient) {
+      const savedDarkMode = localStorage.getItem('isDarkMode');
+      const savedThemeColor = localStorage.getItem('themeColor');
+      
+      if (savedDarkMode !== null) {
+        setIsDarkMode(savedDarkMode === 'true');
+      }
+      
+      if (savedThemeColor) {
+        setThemeColor(savedThemeColor);
+      }
+    }
+  }, [isClient]);
+  
+  // Save theme preferences
+  useEffect(() => {
+    if (isClient) {
+      localStorage.setItem('isDarkMode', String(isDarkMode));
+      localStorage.setItem('themeColor', themeColor);
+    }
+  }, [isDarkMode, themeColor, isClient]);
+
   const pixelsPerSecond = getPixelsPerSecond();
   
   // Safe formatNumber function that works on both server and client
@@ -115,11 +173,109 @@ export default function Home() {
     // Handle undefined, NaN or non-numbers safely
     if (typeof num !== 'number' || isNaN(num)) return '0';
     
-    if (num < 1000) return Math.floor(num).toString();
-    if (num < 1000000) return (num / 1000).toFixed(1).replace(/\.0$/, '') + 'k';
-    if (num < 1000000000) return (num / 1000000).toFixed(1).replace(/\.0$/, '') + 'm';
-    if (num < 1000000000000) return (num / 1000000000).toFixed(1).replace(/\.0$/, '') + 'b';
-    return (num / 1000000000000).toFixed(1).replace(/\.0$/, '') + 't';
+    // Define suffixes for very large numbers
+    const suffixes = [
+      '', 'k', 'm', 'b', 't', 'qd', 'qt', 'sx', 'sp', 'oc', 'nn', 
+      'dc', 'ud', 'dd', 'td', 'qad', 'qid', 'sxd', 'spd', 'ocd', 'nnd',
+      'vg', 'uvg', 'dvg', 'tvg', 'qdvg', 'qtvg', 'sxvg', 'spvg', 'ocvg', 'nnvg',
+      'tg', 'utg', 'dtg', 'ttg', 'qdtg', 'qttg', 'sxtg', 'sptg', 'octg', 'nntg'
+    ];
+    
+    // Determine the appropriate suffix and value
+    const tier = Math.log10(Math.abs(num)) / 3 | 0;
+    
+    // If zero or less than 1000, no suffix
+    if (tier === 0) return Math.floor(num).toString();
+    
+    // Get the suffix and determine the scale factor
+    const suffix = suffixes[tier];
+    const scale = Math.pow(10, tier * 3);
+    
+    // Format the number with the appropriate scale and suffix
+    const scaled = num / scale;
+    
+    // Return the formatted number with suffix
+    return scaled.toFixed(1).replace(/\.0$/, '') + suffix;
+  };
+
+  // Calculate progress toward next rebirth tier (0-100%)
+  const calculateRebirthProgress = () => {
+    // Base is 10 million pixels for 100%
+    const baseRequirement = 10000000;
+    return Math.min(100, (gameState.lifetimePixels / baseRequirement) * 100);
+  };
+  
+  // Calculate how many rebirth points would be gained
+  const calculateRebirthGain = () => {
+    // Only allow rebirth if progress is at 100%
+    if (calculateRebirthProgress() < 100) {
+      return 0;
+    }
+    
+    // Base on cube root of lifetime pixels / 1000
+    return Math.floor(Math.pow(gameState.lifetimePixels / 1000, 1/3));
+  };
+  
+  // Calculate progress to next upgrade tier (0-100%)
+  const calculateNextTierProgress = () => {
+    const tierThresholds = [
+      100,          // Tier 0 -> 1
+      10000,        // Tier 1 -> 2
+      1000000,      // Tier 2 -> 3
+      100000000,    // Tier 3 -> 4
+      10000000000,  // Tier 4 -> 5
+    ];
+    
+    // Determine current tier based on lifetime pixels
+    let currentTier = 0;
+    for (let i = 0; i < tierThresholds.length; i++) {
+      if (gameState.lifetimePixels >= tierThresholds[i]) {
+        currentTier = i + 1;
+      } else {
+        break;
+      }
+    }
+    
+    // If at max tier, return 100%
+    if (currentTier >= tierThresholds.length) {
+      return 100;
+    }
+    
+    // Calculate progress to next tier
+    const prevThreshold = currentTier > 0 ? tierThresholds[currentTier - 1] : 0;
+    const nextThreshold = tierThresholds[currentTier];
+    const progress = ((gameState.lifetimePixels - prevThreshold) / (nextThreshold - prevThreshold)) * 100;
+    
+    return Math.min(100, Math.max(0, progress));
+  };
+  
+  // Get connections for skill tree visualization
+  const getSkillConnections = (skillId: string) => {
+    // Define skill positions
+    const skillPositions: { [key: string]: { x: number, y: number } } = {
+      'click-power': { x: 60, y: 80 },
+      'auto-efficiency': { x: 180, y: 80 },
+      'starting-pixels': { x: 300, y: 80 },
+      'upgrade-discount': { x: 60, y: 200 },
+      'autoclicker-discount': { x: 180, y: 200 },
+      'click-mastery': { x: 60, y: 320 },
+      'automation-empire': { x: 180, y: 320 },
+      'pixel-singularity': { x: 120, y: 440 }
+    };
+    
+    // Define connections
+    const connections: { [key: string]: Array<{ start: { x: number, y: number }, length: number, direction: string }> } = {
+      'upgrade-discount': [{ start: { x: 60, y: 130 }, length: 60, direction: 'down' }],
+      'autoclicker-discount': [{ start: { x: 180, y: 130 }, length: 60, direction: 'down' }],
+      'click-mastery': [{ start: { x: 60, y: 250 }, length: 60, direction: 'down' }],
+      'automation-empire': [{ start: { x: 180, y: 250 }, length: 60, direction: 'down' }],
+      'pixel-singularity': [
+        { start: { x: 60, y: 370 }, length: 90, direction: 'down-right' },
+        { start: { x: 180, y: 370 }, length: 90, direction: 'down-left' }
+      ]
+    };
+    
+    return connections[skillId] || [];
   };
 
   // Pixel pile rendering - only run on client side
@@ -230,12 +386,15 @@ export default function Home() {
                       >
                         {segIndex === segments.length - 1 && column.heightPercent > 30 && (
                           <div 
-                            className="absolute top-0 left-1/2 transform -translate-x-1/2 w-1 h-1 rounded-full" 
-                            style={{
-                              backgroundColor: `hsla(${column.color.hue}, 100%, 80%, 0.8)`,
-                              boxShadow: `0 0 4px hsla(${column.color.hue}, 100%, 80%, 0.8)`
+                            className="absolute top-0 left-1/2 transform -translate-x-1/2 -translate-y-3 opacity-70 text-center whitespace-nowrap text-xs"
+                            style={{ 
+                              textShadow: '0 0 3px rgba(0,0,0,0.8)',
+                              fontSize: '0.6rem',
+                              color: 'white'
                             }}
-                          />
+                          >
+                            {column.pixelCount > 1000 ? formatNumber(column.pixelCount) : ''}
+                          </div>
                         )}
                       </div>
                     );
@@ -245,430 +404,457 @@ export default function Home() {
             })}
           </div>
         </div>
+      </div>
+    );
+  }, [isClient, gameState.pixels, settings.pixelSize, formatNumber]);
+
+  // Function to render the next purchasable upgrade
+  const renderNextPurchasableUpgrade = () => {
+    // Find the first unpurchased upgrade that the player can afford
+    const nextUpgrade = gameState.upgrades
+      .filter(u => !u.purchased)
+      .sort((a, b) => a.cost - b.cost)[0];
+
+    if (!nextUpgrade) return <div className="text-gray-400 text-center p-4">All upgrades purchased!</div>;
+
+    const rebirthEffects = getRebirthEffects();
+    const discountedCost = Math.floor(nextUpgrade.cost * (1 - rebirthEffects.upgradeCostReduction));
+    const canAfford = gameState.pixels >= discountedCost;
+    
+    // Calculate progress percentage toward being able to afford
+    const progressPercent = Math.min(100, (gameState.pixels / discountedCost) * 100);
+
+    return (
+      <div 
+        className="relative overflow-hidden rounded-lg"
+        onClick={(e) => e.stopPropagation()}
+      >
+        {/* Glowing progress bar background */}
+        <div 
+          className="absolute inset-0 bg-blue-600/20 transition-all duration-300"
+          style={{ 
+            width: `${progressPercent}%`,
+            boxShadow: canAfford ? '0 0 20px rgba(37, 99, 235, 0.5)' : 'none',
+            backgroundColor: themeColors[themeColor as keyof typeof themeColors].primary.replace('rgb', 'rgba').replace(')', ', 0.2)')
+          }}
+        />
         
-        <div className="absolute bottom-2 right-2 bg-black/50 p-2 rounded text-xs pointer-events-auto">
-          <div className="flex flex-col gap-1">
-            <div className="flex items-center gap-1">
-              <div className="w-3 h-3 rounded-sm" style={{ backgroundColor: 'hsl(0, 70%, 45%)' }}></div>
-              <span>1-99</span>
-            </div>
-            <div className="flex items-center gap-1">
-              <div className="w-3 h-3 rounded-sm" style={{ backgroundColor: 'hsl(30, 75%, 50%)' }}></div>
-              <span>100-499</span>
-            </div>
-            <div className="flex items-center gap-1">
-              <div className="w-3 h-3 rounded-sm" style={{ backgroundColor: 'hsl(60, 75%, 55%)' }}></div>
-              <span>500-999</span>
-            </div>
-            <div className="flex items-center gap-1">
-              <div className="w-3 h-3 rounded-sm" style={{ backgroundColor: 'hsl(120, 65%, 40%)' }}></div>
-              <span>1K-4.9K</span>
-            </div>
-            <div className="flex items-center gap-1">
-              <div className="w-3 h-3 rounded-sm" style={{ backgroundColor: 'hsl(180, 70%, 40%)' }}></div>
-              <span>5K-9.9K</span>
-            </div>
-            <div className="flex items-center gap-1">
-              <div className="w-3 h-3 rounded-sm" style={{ backgroundColor: 'hsl(240, 70%, 50%)' }}></div>
-              <span>10K-49.9K</span>
-            </div>
-            <div className="flex items-center gap-1">
-              <div className="w-3 h-3 rounded-sm" style={{ backgroundColor: 'hsl(270, 75%, 60%)' }}></div>
-              <span>50K+</span>
-            </div>
+        <div className="relative z-10 flex items-center justify-between p-3">
+          <div>
+            <h3 className={`font-semibold ${isDarkMode ? 'text-blue-300' : 'text-blue-700'}`}>Next Upgrade:</h3>
+            <div className={isDarkMode ? 'text-white' : 'text-gray-800'}>{nextUpgrade.name}</div>
+            <div className={`text-sm ${isDarkMode ? 'text-gray-300' : 'text-gray-600'}`}>{nextUpgrade.description}</div>
           </div>
+          <button
+            className={`px-5 py-2 rounded-lg text-sm font-semibold transition-all ${
+              canAfford
+                ? 'bg-gradient-to-br from-blue-600/80 to-blue-800/80 hover:from-blue-500/80 hover:to-blue-700/80 shadow-lg shadow-blue-700/20 text-white'
+                : 'bg-gray-700/50 cursor-not-allowed opacity-60 text-gray-300'
+            }`}
+            onClick={(e) => {
+              e.stopPropagation();
+              if (canAfford) {
+                buyUpgrade(nextUpgrade.id);
+              }
+            }}
+            disabled={!canAfford}
+            style={{
+              background: canAfford 
+                ? `linear-gradient(to bottom right, ${themeColors[themeColor as keyof typeof themeColors].light}cc, ${themeColors[themeColor as keyof typeof themeColors].dark}cc)`
+                : ''
+            }}
+          >
+            {formatNumber(discountedCost)} pixels
+          </button>
+        </div>
+        
+        {/* Progress indicator at the bottom */}
+        <div className="h-1 bg-gray-800 absolute bottom-0 left-0 right-0">
+          <div 
+            className={`h-full transition-all duration-300`}
+            style={{ 
+              width: `${progressPercent}%`,
+              backgroundColor: themeColors[themeColor as keyof typeof themeColors][canAfford ? 'light' : 'primary']
+            }}
+          />
         </div>
       </div>
     );
-  }, [gameState.pixels, settings.pixelSize, settings.animationSpeed, isClient]);
-  
-  // Function to render the selected tab content
-  const renderTabContent = () => {
-    switch (activeTab) {
-      case 'stats':
-        return (
-          <div className="p-4 overflow-y-auto max-h-full">
-            <h2 className="text-xl font-bold mb-4">Statistics</h2>
-            {/* Stats content */}
-            <div className="space-y-3">
-              <div>
-                <div className="text-gray-400 text-sm">Lifetime Pixels</div>
-                <div className="text-xl">{formatNumber(gameState.lifetimePixels)}</div>
-              </div>
-              <div>
-                <div className="text-gray-400 text-sm">Total Clicks</div>
-                <div className="text-xl">{formatNumber(gameState.totalClicks)}</div>
-              </div>
-              <div>
-                <div className="text-gray-400 text-sm">Click Power</div>
-                <div className="text-xl">{formatNumber(gameState.clickPower)}</div>
-              </div>
-              <div>
-                <div className="text-gray-400 text-sm">Pixels per Second</div>
-                <div className="text-xl">{formatNumber(getPixelsPerSecond())}</div>
-              </div>
-              <div>
-                <div className="text-gray-400 text-sm">Society Level</div>
-                <div className="text-xl">{gameState.societyLevel}</div>
-              </div>
-              <div>
-                <div className="text-gray-400 text-sm">Rebirth Points</div>
-                <div className="text-xl">{gameState.rebirthPoints}</div>
-              </div>
-              <div>
-                <div className="text-gray-400 text-sm">Rebirth Count</div>
-                <div className="text-xl">{gameState.rebirthCount}</div>
-              </div>
-            </div>
-          </div>
-        );
-      case 'upgrades':
-        return (
-          <div className="p-4 overflow-y-auto max-h-full" id="scrollable-upgrades" ref={scrollRefs.upgrades} onScroll={(e) => {
-            saveScrollPosition('upgrades', e.currentTarget.scrollTop);
-          }}>
-            <h2 className="text-xl font-bold mb-4">Clicker Upgrades</h2>
-            {/* Render the upgrade tiers */}
-            {renderUpgradeTier(
-              gameState.upgrades.filter(u => u.multiplier <= 5),
-              "Basic Upgrades",
-              "bg-blue-600"
-            )}
-            {renderUpgradeTier(
-              gameState.upgrades.filter(u => u.multiplier > 5 && u.multiplier <= 50),
-              "Advanced Upgrades",
-              "bg-purple-600"
-            )}
-            {renderUpgradeTier(
-              gameState.upgrades.filter(u => u.multiplier > 50),
-              "Epic Upgrades",
-              "bg-yellow-600"
-            )}
-          </div>
-        );
-      case 'autoClickers':
-        return (
-          <div className="p-4 overflow-y-auto max-h-full" id="scrollable-structures" ref={scrollRefs.autoClickers} onScroll={(e) => {
-            saveScrollPosition('autoClickers', e.currentTarget.scrollTop);
-          }}>
-            <h2 className="text-xl font-bold mb-4">Structures</h2>
-            <div className="space-y-4">
-              {gameState.autoClickers.map((clicker) => (
-                <div key={clicker.id} className="bg-gray-800 rounded-lg p-3 transition-all hover:bg-gray-700">
-                  <div className="flex justify-between items-start">
-                    <div>
-                      <div className="font-semibold text-lg">{clicker.name}</div>
-                      <div className="text-gray-400 text-sm">{clicker.count} owned • {formatNumber(clicker.pixelsPerSecond)} pixels/sec each</div>
-                    </div>
-                    <button
-                      className={`px-3 py-1 rounded text-sm font-semibold ${
-                        gameState.pixels >= clicker.cost
-                          ? 'bg-green-600 hover:bg-green-500'
-                          : 'bg-gray-600 cursor-not-allowed'
-                      }`}
-                      onClick={() => buyAutoClicker(clicker.id)}
-                      disabled={gameState.pixels < clicker.cost}
-                    >
-                      Buy: {formatNumber(clicker.cost)}
-                    </button>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        );
-      case 'rebirth':
-        return (
-          <div className="p-4 overflow-y-auto max-h-full">
-            <h2 className="text-xl font-bold mb-4">Rebirth</h2>
-            
-            <div className="bg-gray-800 rounded-lg p-4 mb-4">
-              <div className="mb-2">
-                <span className="text-gray-400">Current Rebirth Points:</span>
-                <span className="ml-2 font-bold">{gameState.rebirthPoints}</span>
-              </div>
-              
-              <div className="mb-4">
-                <span className="text-gray-400">Potential Gain:</span>
-                <span className="ml-2 font-bold">{calculateRebirthGain()}</span>
-              </div>
-              
-              <div className="w-full bg-gray-700 rounded-full h-2 mb-4">
-                <div
-                  className="bg-violet-600 h-2 rounded-full transition-all duration-300"
-                  style={{ width: `${calculateRebirthProgress()}%` }}
-                />
-              </div>
-              
-              <button
-                className="w-full px-4 py-2 bg-violet-700 hover:bg-violet-600 rounded font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
-                onClick={performRebirth}
-                disabled={calculateRebirthGain() === 0}
-              >
-                Rebirth
-              </button>
-            </div>
-            
-            <div className="grid grid-cols-3 gap-3 mt-6">
-              {gameState.rebirthSkills.map(skill => {
-                const canAfford = gameState.rebirthPoints >= skill.cost;
-                const isMaxLevel = skill.level >= skill.maxLevel;
-                const dependencies = skill.requires || [];
-                const requirementsMet = dependencies.every(dep => {
-                  const requiredSkill = gameState.rebirthSkills.find(s => s.id === dep);
-                  return requiredSkill && requiredSkill.level > 0;
-                });
-                
-                const connections = getSkillConnections(skill.id);
-                
-                return (
-                  <div key={skill.id} className="relative">
-                    {connections.map((conn, idx) => (
-                      <div
-                        key={`${skill.id}-conn-${idx}`}
-                        className={`absolute h-1 bg-gray-700 transform ${
-                          conn.direction === 'right' ? 'rotate-0' : 
-                          conn.direction === 'down' ? 'rotate-90 origin-top-left' : 
-                          conn.direction === 'down-right' ? 'rotate-45 origin-top-left' : 'rotate-135 origin-top-left'
-                        }`}
-                        style={{
-                          top: conn.start.y,
-                          left: conn.start.x,
-                          width: conn.length,
-                          zIndex: 1,
-                        }}
-                      />
-                    ))}
-                    
-                    <button
-                      className={`w-full relative z-10 p-3 rounded-lg flex flex-col items-center text-center
-                        ${skill.level > 0 ? 'bg-violet-800 border border-violet-600' : 
-                          !requirementsMet ? 'bg-gray-800 opacity-50 cursor-not-allowed' :
-                          canAfford ? 'bg-gray-800 hover:bg-gray-700 border border-violet-800' : 
-                          'bg-gray-800 border border-gray-700 opacity-75 cursor-not-allowed'
-                        }`}
-                      onClick={() => skill.level < skill.maxLevel && requirementsMet && canAfford && buyRebirthSkill(skill.id)}
-                      disabled={skill.level >= skill.maxLevel || !canAfford || !requirementsMet}
-                      title={!requirementsMet ? "Requirements not met" : isMaxLevel ? "Maximum level reached" : ""}
-                    >
-                      <div className="font-semibold">{skill.name}</div>
-                      <div className="text-xs text-gray-400 mt-1">{skill.level}/{skill.maxLevel}</div>
-                      
-                      {!isMaxLevel && (
-                        <div className={`text-xs mt-2 ${canAfford ? 'text-violet-400' : 'text-gray-500'}`}>
-                          Cost: {skill.cost} RP
-                        </div>
-                      )}
-                    </button>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        );
-      case 'settings':
-        return (
-          <div className="p-4 overflow-y-auto max-h-full">
-            <h2 className="text-xl font-bold mb-4">Settings</h2>
-            
-            <div className="space-y-4">
-              <div>
-                <label className="block mb-2 text-sm text-gray-400">Pixel Size</label>
-                <input
-                  type="range"
-                  min="1"
-                  max="10"
-                  value={settings.pixelSize}
-                  onChange={(e: ChangeEvent<HTMLInputElement>) => setSettings({...settings, pixelSize: parseInt(e.target.value)})}
-                  className="w-full"
-                />
-                <div className="text-sm text-right">{settings.pixelSize}</div>
-              </div>
-              
-              <div>
-                <label className="block mb-2 text-sm text-gray-400">Color Scheme</label>
-                <select
-                  value={settings.colorScheme}
-                  onChange={(e: ChangeEvent<HTMLSelectElement>) => setSettings({...settings, colorScheme: e.target.value as ColorScheme})}
-                  className="w-full bg-gray-800 border border-gray-700 p-2 rounded"
-                >
-                  <option value="rainbow">Rainbow</option>
-                  <option value="monochrome">Monochrome</option>
-                  <option value="blues">Blues</option>
-                  <option value="greens">Greens</option>
-                </select>
-              </div>
-              
-              <div>
-                <label className="block mb-2 text-sm text-gray-400">Animation Speed</label>
-                <select
-                  value={settings.animationSpeed}
-                  onChange={(e: ChangeEvent<HTMLSelectElement>) => setSettings({...settings, animationSpeed: e.target.value as AnimationSpeed})}
-                  className="w-full bg-gray-800 border border-gray-700 p-2 rounded"
-                >
-                  <option value="slow">Slow</option>
-                  <option value="normal">Normal</option>
-                  <option value="fast">Fast</option>
-                </select>
-              </div>
-              
-              <div className="pt-4">
-                <button 
-                  onClick={resetGame} 
-                  className="bg-red-700 hover:bg-red-600 text-white px-4 py-2 rounded font-semibold"
-                >
-                  Reset Game
-                </button>
-              </div>
-            </div>
-          </div>
-        );
-      default:
-        return null;
-    }
   };
 
   // Helper function to render upgrade tiers
-  const renderUpgradeTier = (upgradeList: typeof gameState.upgrades, title: string, colorClass: string) => {
-    if (upgradeList.length === 0) return null;
+  const renderUpgradeTier = (upgrades: any[], title: string, textColorClass: string) => {
+    const availableUpgrades = upgrades.filter(u => !u.purchased);
+    if (availableUpgrades.length === 0) return null;
     
     return (
-      <div className="mb-6">
-        <h3 className={`text-md font-semibold ${colorClass} mb-2 sticky top-0 bg-gray-900/90 py-2 z-10`}>{title}</h3>
-        <div className="grid gap-3">
-          {upgradeList.map(upgrade => (
-            <button
-              key={upgrade.id}
-              onClick={() => buyUpgrade(upgrade.id)}
-              disabled={upgrade.purchased || gameState.pixels < upgrade.cost}
-              className={`w-full p-3 rounded text-left text-sm border ${
-                upgrade.purchased
-                  ? 'bg-green-900/20 border-green-800/30 text-green-400'
-                  : gameState.pixels >= upgrade.cost
-                  ? 'bg-blue-900/20 border-blue-800/30 text-blue-300 hover:bg-blue-900/40'
-                  : 'bg-gray-900/30 border-gray-800/30 text-gray-500 cursor-not-allowed'
-              } transition-colors duration-200`}
-            >
-              <div className="font-semibold flex justify-between">
-                <span>{upgrade.name}</span>
-                <span>{upgrade.purchased ? 'Purchased' : `${formatNumber(upgrade.cost)} pixels`}</span>
-              </div>
-              <div className="text-sm opacity-80 mt-1">{upgrade.description}</div>
-              {!upgrade.purchased && (
-                <div className="mt-1 bg-gray-800 rounded-full h-1.5 overflow-hidden">
-                  <div 
-                    className="bg-blue-600 h-full transition-all duration-300" 
-                    style={{ width: `${Math.min(100, (gameState.pixels / upgrade.cost) * 100)}%` }}
-                  ></div>
+      <div>
+        <h3 className={`text-md font-semibold mb-2 ${textColorClass}`}>{title}</h3>
+        <div className="space-y-2">
+          {availableUpgrades.map((upgrade) => {
+            const rebirthEffects = getRebirthEffects();
+            const discountedCost = Math.floor(upgrade.cost * (1 - rebirthEffects.upgradeCostReduction));
+            const canAfford = gameState.pixels >= discountedCost;
+            
+            return (
+              <div 
+                key={upgrade.id} 
+                className="backdrop-blur-md bg-blue-900/20 rounded-xl p-4 transition-all hover:bg-blue-900/30 border border-blue-500/20 shadow-lg shadow-blue-500/5"
+              >
+                <div className="flex justify-between">
+                  <div>
+                    <div className="font-semibold">{upgrade.name}</div>
+                    <div className="text-sm text-gray-300">{upgrade.description}</div>
+                    <div className="text-xs text-gray-400 mt-1">{formatNumber(gameState.clickPower)} → {formatNumber(gameState.clickPower * upgrade.multiplier)}</div>
+                  </div>
+                  <button
+                    className={`px-4 py-2 rounded-lg text-sm font-semibold transition-all ${
+                      canAfford
+                        ? 'bg-gradient-to-br from-blue-600/80 to-blue-800/80 hover:from-blue-500/80 hover:to-blue-700/80 shadow-lg shadow-blue-700/20'
+                        : 'bg-gray-700/50 cursor-not-allowed'
+                    }`}
+                    onClick={() => buyUpgrade(upgrade.id)}
+                    disabled={!canAfford}
+                  >
+                    {formatNumber(discountedCost)}
+                  </button>
                 </div>
-              )}
-            </button>
-          ))}
+              </div>
+            );
+          })}
         </div>
       </div>
     );
   };
   
-  // Calculate progress to next upgrade tier
-  const calculateNextTierProgress = () => {
-    // Determine current tier based on highest upgrade unlocked
-    const highestMultiplier = Math.max(
-      ...gameState.upgrades
-        .filter(u => gameState.pixels >= u.cost * 0.1 || u.purchased)
-        .map(u => u.multiplier),
-      1
+  // Tab content rendering
+  const renderStructuresContent = () => (
+    <div className="p-4">
+      <div className="space-y-4">
+        {gameState.autoClickers.map((clicker) => {
+          const rebirthEffects = getRebirthEffects();
+          const discountedCost = Math.floor(clicker.cost * (1 - rebirthEffects.autoClickerCostReduction));
+          return (
+            <div key={clicker.id} className={`backdrop-blur-md rounded-xl p-4 transition-all hover:bg-purple-900/30 border shadow-lg ${
+              isDarkMode ? 'bg-purple-900/20 border-purple-500/20 shadow-purple-500/5' : 'bg-purple-100/60 border-purple-300/30 shadow-purple-300/10'
+            }`}>
+              <div className="flex justify-between items-start">
+                <div>
+                  <div className={`font-semibold text-lg ${isDarkMode ? 'text-purple-300' : 'text-purple-800'}`}>{clicker.name}</div>
+                  <div className={`text-sm ${isDarkMode ? 'text-purple-200/80' : 'text-purple-700/90'}`}>{clicker.count} owned • {formatNumber(clicker.pixelsPerSecond)} pixels/sec each</div>
+                </div>
+                <button
+                  className={`px-4 py-2 rounded-lg text-sm font-semibold transition-all ${
+                    gameState.pixels >= discountedCost
+                      ? 'bg-gradient-to-br from-purple-600/80 to-purple-800/80 hover:from-purple-500/80 hover:to-purple-700/80 shadow-lg shadow-purple-700/20 text-white'
+                      : 'bg-gray-700/50 cursor-not-allowed text-gray-300'
+                  }`}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    buyAutoClicker(clicker.id);
+                  }}
+                  disabled={gameState.pixels < discountedCost}
+                  style={{
+                    background: gameState.pixels >= discountedCost 
+                      ? `linear-gradient(to bottom right, ${themeColors[themeColor as keyof typeof themeColors].light}cc, ${themeColors[themeColor as keyof typeof themeColors].dark}cc)`
+                      : ''
+                  }}
+                >
+                  Buy: {formatNumber(discountedCost)}
+                  <div className="w-full mt-1 bg-gray-900/50 rounded-full h-1 overflow-hidden">
+                    <div 
+                      className="bg-purple-600 h-full transition-all duration-300"
+                      style={{ 
+                        width: `${Math.min(100, (gameState.pixels / discountedCost) * 100)}%`,
+                        backgroundColor: themeColors[themeColor as keyof typeof themeColors].primary
+                      }}
+                    ></div>
+                  </div>
+                </button>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+
+  const renderRebirthContent = () => (
+    <div className="p-4">
+      <div className={`backdrop-blur-md rounded-xl p-6 mb-6 border shadow-lg ${
+        isDarkMode ? 'bg-violet-900/20 border-violet-500/20 shadow-violet-500/5' : 'bg-violet-100/60 border-violet-300/30 shadow-violet-300/10'
+      }`}>
+        <div className="mb-2">
+          <span className={isDarkMode ? 'text-violet-300' : 'text-violet-800'}>Current Rebirth Points:</span>
+          <span className="ml-2 font-bold">{gameState.rebirthPoints}</span>
+        </div>
+        
+        <div className="mb-4">
+          <span className={isDarkMode ? 'text-violet-300' : 'text-violet-800'}>Potential Gain:</span>
+          <span className="ml-2 font-bold">{calculateRebirthGain()}</span>
+        </div>
+        
+        <div className="w-full bg-violet-950/50 rounded-full h-2 mb-4">
+          <div
+            className="bg-violet-600 h-2 rounded-full transition-all duration-300"
+            style={{ 
+              width: `${calculateRebirthProgress()}%`,
+              backgroundColor: themeColors[themeColor as keyof typeof themeColors].primary
+            }}
+          />
+        </div>
+        
+        <button
+          className={`w-full px-4 py-3 rounded-lg font-semibold disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 shadow-lg shadow-violet-700/20 text-white
+            ${calculateRebirthGain() <= 0 || isNaN(calculateRebirthGain()) ? 'bg-gray-700/50' : 'bg-gradient-to-br from-violet-600/80 to-violet-800/80 hover:from-violet-500/80 hover:to-violet-700/80'}
+          `}
+          onClick={performRebirth}
+          disabled={calculateRebirthGain() <= 0 || isNaN(calculateRebirthGain())}
+          style={{
+            background: calculateRebirthGain() > 0 && !isNaN(calculateRebirthGain())
+              ? `linear-gradient(to bottom right, ${themeColors[themeColor as keyof typeof themeColors].light}cc, ${themeColors[themeColor as keyof typeof themeColors].dark}cc)`
+              : ''
+          }}
+        >
+          Rebirth
+        </button>
+      </div>
+      
+      <div className={`p-2 rounded-xl backdrop-blur-md border-violet-500/10 ${isDarkMode ? 'bg-gray-900/30' : 'bg-white/30 border'}`}>
+        {gameState.rebirthSkills.map(skill => {
+          const canAfford = gameState.rebirthPoints >= skill.cost;
+          const isMaxLevel = skill.level >= skill.maxLevel;
+          const dependencies = skill.requires || [];
+          const requirementsMet = dependencies.every(dep => {
+            const requiredSkill = gameState.rebirthSkills.find(s => s.id === dep);
+            return requiredSkill && requiredSkill.level > 0;
+          });
+          
+          const connections = getSkillConnections(skill.id);
+          
+          return (
+            <div className="relative mb-6" key={skill.id}>
+              {connections.map((conn, idx) => (
+                <div
+                  key={`${skill.id}-conn-${idx}`}
+                  className={`absolute h-1 transform ${
+                    conn.direction === 'right' ? 'rotate-0' : 
+                    conn.direction === 'down' ? 'rotate-90 origin-top-left' : 
+                    conn.direction === 'down-right' ? 'rotate-45 origin-top-left' : 'rotate-135 origin-top-left'
+                  }`}
+                  style={{
+                    top: conn.start.y,
+                    left: conn.start.x,
+                    width: conn.length,
+                    zIndex: 1,
+                    backgroundColor: isDarkMode ? 'rgb(75, 85, 99)' : 'rgb(156, 163, 175)'
+                  }}
+                />
+              ))}
+              
+              <button
+                className={`w-full relative z-10 p-3 rounded-lg flex flex-col items-center text-center
+                  ${skill.level > 0 
+                    ? isDarkMode ? 'bg-violet-800 border border-violet-600' : 'bg-violet-300 border border-violet-400' 
+                    : !requirementsMet 
+                      ? 'bg-gray-800 opacity-50 cursor-not-allowed' 
+                      : canAfford 
+                        ? isDarkMode ? 'bg-gray-800 hover:bg-gray-700 border border-violet-800' : 'bg-gray-200 hover:bg-gray-100 border border-violet-400'
+                        : isDarkMode ? 'bg-gray-800 border border-gray-700 opacity-75 cursor-not-allowed' : 'bg-gray-200 border border-gray-300 opacity-75 cursor-not-allowed'
+                  }`}
+                onClick={() => skill.level < skill.maxLevel && requirementsMet && canAfford && buyRebirthSkill(skill.id)}
+                disabled={skill.level >= skill.maxLevel || !canAfford || !requirementsMet}
+                title={!requirementsMet ? "Requirements not met" : isMaxLevel ? "Maximum level reached" : ""}
+              >
+                <div className="font-semibold">{skill.name}</div>
+                <div className={`text-xs mt-1 ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}>{skill.level}/{skill.maxLevel}</div>
+                
+                {!isMaxLevel && (
+                  <div className={`text-xs mt-2 ${canAfford ? (isDarkMode ? 'text-violet-400' : 'text-violet-700') : (isDarkMode ? 'text-gray-500' : 'text-gray-600')}`}>
+                    Cost: {skill.cost} RP
+                  </div>
+                )}
+              </button>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+
+  const renderSettingsContent = () => {
+    return (
+      <div className="p-4">
+        <div className="space-y-6">
+          {/* Theme Settings */}
+          <div className={`backdrop-blur-md p-4 rounded-xl border shadow-lg ${
+            isDarkMode ? 'bg-gray-800/30 border-gray-500/20 shadow-gray-500/5' : 'bg-white/30 border-gray-300/30 shadow-gray-300/10'
+          }`}>
+            <h3 className={`text-md font-semibold mb-3 ${isDarkMode ? 'text-blue-300' : 'text-blue-700'}`}>Theme Settings</h3>
+            
+            {/* Light/Dark Mode Toggle */}
+            <div className="flex items-center justify-between mb-4">
+              <label className="text-sm">Dark Mode</label>
+              <button 
+                onClick={() => setIsDarkMode(!isDarkMode)}
+                className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+                  isDarkMode ? 'bg-blue-700' : 'bg-gray-400'
+                }`}
+              >
+                <span
+                  className={`${
+                    isDarkMode ? 'translate-x-6' : 'translate-x-1'
+                  } inline-block h-4 w-4 transform rounded-full bg-white transition-transform`}
+                />
+                <span className="absolute left-1 text-xs text-white opacity-70">
+                  {isDarkMode ? '🌙' : '☀️'}
+                </span>
+              </button>
+            </div>
+            
+            {/* Color Theme Selector */}
+            <div className="mb-2">
+              <label className="text-sm block mb-2">Color Theme</label>
+              <div className="flex space-x-2 mb-4">
+                {Object.keys(themeColors).map((color) => (
+                  <button
+                    key={color}
+                    onClick={() => setThemeColor(color)}
+                    className={`w-8 h-8 rounded-full transition-all ${
+                      themeColor === color ? 'ring-2 ring-white scale-110' : 'opacity-70 hover:opacity-100'
+                    }`}
+                    style={{ 
+                      backgroundColor: themeColors[color as keyof typeof themeColors].primary,
+                      boxShadow: themeColor === color ? `0 0 12px ${themeColors[color as keyof typeof themeColors].primary}` : 'none'
+                    }}
+                    aria-label={`${color} theme`}
+                  />
+                ))}
+              </div>
+            </div>
+          </div>
+          
+          {/* Pixel Size */}
+          <div className={`backdrop-blur-md p-4 rounded-xl border shadow-lg ${
+            isDarkMode ? 'bg-gray-800/30 border-gray-500/20 shadow-gray-500/5' : 'bg-white/30 border-gray-300/30 shadow-gray-300/10'
+          }`}>
+            <label className={`block mb-2 text-sm ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>Pixel Size</label>
+            <input
+              type="range"
+              min="1"
+              max="10"
+              value={settings.pixelSize}
+              onChange={(e: ChangeEvent<HTMLInputElement>) => setSettings({...settings, pixelSize: parseInt(e.target.value)})}
+              className="w-full"
+              style={{ accentColor: themeColors[themeColor as keyof typeof themeColors].primary }}
+            />
+            <div className="text-sm text-right">{settings.pixelSize}</div>
+          </div>
+          
+                    {/* Animation Speed */}
+                    <div className={`backdrop-blur-md p-4 rounded-xl border shadow-lg ${
+            isDarkMode ? 'bg-gray-800/30 border-gray-500/20 shadow-gray-500/5' : 'bg-white/30 border-gray-300/30 shadow-gray-300/10'
+          }`}>
+            <label className={`block mb-2 text-sm ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>Animation Speed</label>
+            <select
+              value={settings.animationSpeed}
+              onChange={(e: ChangeEvent<HTMLSelectElement>) => setSettings({...settings, animationSpeed: e.target.value as AnimationSpeed})}
+              className={`w-full p-2 rounded-lg ${
+                isDarkMode ? 'bg-gray-900/50 border-gray-700' : 'bg-white border-gray-300'
+              }`}
+            >
+              <option value="slow">Slow</option>
+              <option value="normal">Normal</option>
+              <option value="fast">Fast</option>
+            </select>
+          </div>
+          
+          {/* Reset Game Button */}
+          <div className={`backdrop-blur-md p-4 rounded-xl border shadow-lg ${
+            isDarkMode ? 'bg-gray-800/30 border-gray-500/20 shadow-gray-500/5' : 'bg-white/30 border-gray-300/30 shadow-gray-300/10'
+          }`}>
+            <button 
+              onClick={resetGame} 
+              className="bg-gradient-to-br from-red-600/80 to-red-800/80 hover:from-red-500/80 hover:to-red-700/80 text-white px-4 py-2 rounded-lg font-semibold transition-all duration-200 shadow-lg shadow-red-700/20"
+            >
+              Reset Game
+            </button>
+          </div>
+        </div>
+      </div>
     );
-    
-    // Determine next tier threshold
-    let nextTierThreshold = 0;
-    if (highestMultiplier <= 5) {
-      nextTierThreshold = 1000; // Threshold for advanced upgrades
-    } else if (highestMultiplier <= 50) {
-      nextTierThreshold = 100000; // Threshold for epic upgrades
-    } else {
-      nextTierThreshold = 10000000; // Next major milestone
-    }
-    
-    // Calculate percentage progress to next tier
-    const currentValue = gameState.pixels;
-    const previousTierThreshold = nextTierThreshold / 10;
-    
-    return Math.min(100, ((currentValue - previousTierThreshold) / (nextTierThreshold - previousTierThreshold)) * 100);
-  };
-  
-  // Calculate rebirth potential
-  const calculateRebirthGain = () => {
-    // Modified formula: sqrt(log10(pixels)) rounded down
-    // This makes it harder to get rebirth points at higher levels
-    return Math.max(0, Math.floor(Math.sqrt(Math.log10(gameState.pixels))));
-  };
-  
-  // New function to calculate progress toward next rebirth point
-  const calculateRebirthProgress = () => {
-    const currentLog = Math.log10(gameState.pixels);
-    const currentFloor = Math.floor(currentLog);
-    const nextThreshold = Math.pow(10, currentFloor + 1);
-    
-    // Calculate percentage progress to next level (0-100)
-    return ((gameState.pixels - Math.pow(10, currentFloor)) / (nextThreshold - Math.pow(10, currentFloor))) * 100;
-  };
-  
-  // Fix the skill connection type
-  type SkillConnection = {
-    direction: 'right' | 'down' | 'down-right' | 'down-left';
-    start: { x: number; y: number };
-    length: number;
   };
 
-  // Get skill connections for visualization
-  const getSkillConnections = (skillId: string): SkillConnection[] => {
-    // Return empty array for now - we'll implement the actual connections elsewhere
-    return [];
-  };
-
-  // Render main content (stats, pixels count)
   const renderMainContent = () => {
     return (
       <div className="p-4 h-full">
-        <h2 className="text-lg font-mono mb-2">{formatNumber(gameState.pixels)} pixels</h2>
-        <div className="grid gap-2">
-          <p className="text-sm text-gray-300">
-            {formatNumber(getPixelsPerSecond())} pixels/sec
-          </p>
-          <p className="text-sm text-gray-300">Click Power: {formatNumber(gameState.clickPower)}</p>
-          <p className="text-sm text-gray-300">Lifetime Pixels: {formatNumber(gameState.lifetimePixels)}</p>
-          {gameState.rebirthCount > 0 && (
-            <p className="text-sm text-violet-400">Rebirths: {gameState.rebirthCount}</p>
-          )}
+        <h2 className={`text-xl font-mono mb-4 text-center py-2 rounded-lg shadow-inner ${
+          isDarkMode ? 'bg-indigo-900/30' : 'bg-indigo-100/70'
+        }`}>
+          {formatNumber(gameState.pixels)} <span className={isDarkMode ? 'text-indigo-300' : 'text-indigo-700'}>pixels</span>
+        </h2>
+        
+        {/* Main stats and progress in a flex layout */}
+        <div className="flex flex-wrap gap-4">
+          {/* Basic stats section */}
+          <div className={`rounded-md p-3 flex-1 min-w-[200px] border shadow-md ${
+            isDarkMode ? 'bg-gray-800/50 border-gray-700/50' : 'bg-white/80 border-gray-300/50'
+          }`}>
+            <h3 className={`text-md font-semibold mb-2 ${isDarkMode ? 'text-indigo-300' : 'text-indigo-700'}`}>Stats</h3>
+            <div className="space-y-2">
+              <p className={`text-sm flex justify-between ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                <span>Pixels/sec:</span> <span className="font-mono">{formatNumber(getPixelsPerSecond())}</span>
+              </p>
+              <p className={`text-sm flex justify-between ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                <span>Click Power:</span> <span className="font-mono">{formatNumber(gameState.clickPower)}</span>
+              </p>
+              <p className={`text-sm flex justify-between ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                <span>Lifetime Pixels:</span> <span className="font-mono">{formatNumber(gameState.lifetimePixels)}</span>
+              </p>
+              {gameState.rebirthCount > 0 && (
+                <p className={`text-sm flex justify-between ${isDarkMode ? 'text-violet-400' : 'text-violet-600'}`}>
+                  <span>Rebirths:</span> <span className="font-mono">{gameState.rebirthCount}</span>
+                </p>
+              )}
+            </div>
+          </div>
           
           {/* Game progress section */}
-          <div className="mt-4 p-3 bg-gray-800/50 rounded-md">
-            <h3 className="text-md font-semibold mb-2">Game Progress</h3>
+          <div className={`rounded-md p-3 flex-1 min-w-[200px] border shadow-md ${
+            isDarkMode ? 'bg-gray-800/50 border-gray-700/50' : 'bg-white/80 border-gray-300/50'
+          }`}>
+            <h3 className={`text-md font-semibold mb-2 ${isDarkMode ? 'text-indigo-300' : 'text-indigo-700'}`}>Game Progress</h3>
             <div className="space-y-2">
               {/* Progress to next upgrade tier */}
               <div>
-                <div className="flex justify-between text-xs text-gray-400">
+                <div className={`flex justify-between text-xs ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>
                   <span>Next Tier Progress:</span>
                   <span>{calculateNextTierProgress().toFixed(1)}%</span>
                 </div>
-                <div className="mt-1 bg-gray-900 rounded-full h-2 overflow-hidden">
+                <div className={`mt-1 rounded-full h-2 overflow-hidden ${isDarkMode ? 'bg-gray-900' : 'bg-gray-200'}`}>
                   <div 
-                    className="bg-blue-600 h-full" 
-                    style={{ width: `${calculateNextTierProgress()}%` }}
+                    className="h-full" 
+                    style={{ 
+                      width: `${calculateNextTierProgress()}%`,
+                      backgroundColor: themeColors[themeColor as keyof typeof themeColors].primary
+                    }}
                   ></div>
                 </div>
               </div>
               
               {/* Progress to rebirth */}
               <div>
-                <div className="flex justify-between text-xs text-gray-400">
+                <div className={`flex justify-between text-xs ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>
                   <span>Rebirth Progress:</span>
                   <span>{calculateRebirthProgress().toFixed(1)}%</span>
                 </div>
-                <div className="mt-1 bg-gray-900 rounded-full h-2 overflow-hidden">
+                <div className={`mt-1 rounded-full h-2 overflow-hidden ${isDarkMode ? 'bg-gray-900' : 'bg-gray-200'}`}>
                   <div 
-                    className="bg-violet-600 h-full" 
-                    style={{ width: `${calculateRebirthProgress()}%` }}
+                    className="h-full" 
+                    style={{ 
+                      width: `${calculateRebirthProgress()}%`,
+                      backgroundColor: themeColors[themeColor as keyof typeof themeColors].primary
+                    }}
                   ></div>
                 </div>
               </div>
@@ -681,23 +867,39 @@ export default function Home() {
 
   return (
     <>
-      <div className="flex flex-col h-screen bg-gray-900 text-white">
+      <div className={`flex flex-col h-screen text-white transition-colors duration-300 ${
+        isDarkMode ? 'bg-gray-900' : 'bg-gray-100 text-gray-900'
+      }`}>
         {/* Game Area */}
         <div 
-          className="relative flex-grow overflow-hidden" 
-          onClick={handleClick}
+          className="relative flex-grow overflow-hidden backdrop-blur-md cursor-pointer"
+          style={{ backgroundColor: isDarkMode ? 'rgba(0,0,0,0.8)' : 'rgba(255,255,255,0.8)' }}
+          onClick={() => handleClick()}
         >
-          {/* Pixel visualization */}
-          {pixelPileRendering}
+          {/* Pixel Rain Effect - direct child of game area */}
+          <div className="absolute inset-0 z-[5] overflow-hidden">
+            <SimpleRain pixelsPerSecond={getPixelsPerSecond()} />
+          </div>
           
-          {/* UI Container */}
-          <div className="absolute inset-0 pointer-events-none">
-            <SidebarLayout activeTab={activeTab} setActiveTab={setActiveTab}>
-              {renderMainContent()}
-            </SidebarLayout>
-            
-            {/* Tab Content (rendered by SidebarLayout) */}
-            {activeTab && renderTabContent()}
+          {/* Pixel visualization */}
+          <div className="relative z-[10]">
+            {pixelPileRendering}
+          </div>
+
+          {/* UI Container - highest z-index */}
+          <div className="absolute inset-0 z-20 pointer-events-none">
+            <div className="h-full w-full pointer-events-none">
+              <SidebarLayout 
+                nextUpgradeContent={renderNextPurchasableUpgrade()}
+                structuresContent={renderStructuresContent()}
+                rebirthContent={renderRebirthContent()}
+                settingsContent={renderSettingsContent()}
+                isDarkMode={isDarkMode}
+                themeColor={themeColor}
+              >
+                {renderMainContent()}
+              </SidebarLayout>
+            </div>
           </div>
         </div>
       </div>
@@ -708,55 +910,30 @@ export default function Home() {
           to { opacity: 1; transform: translateY(0); }
         }
         
-        * {
-          user-select: none;
+        @keyframes rainFall {
+          0% {
+            transform: translateY(0) rotate(10deg);
+          }
+          100% {
+            transform: translateY(calc(100vh + 50px)) rotate(10deg);
+          }
         }
         
-        .pixel-block {
-          transition: transform 0.15s ease, box-shadow 0.15s ease, z-index 0.01s;
-        }
-        
-        .pixel-block:hover {
-          transform: scale(1.5) translateY(-5px);
-          z-index: 9999 !important;
-          box-shadow: 0 0 15px rgba(255, 255, 255, 0.5) !important;
-        }
-        
-        /* Custom scrollbar styles */
         .custom-scrollbar::-webkit-scrollbar {
-          width: 8px;
+          width: 6px;
         }
         
         .custom-scrollbar::-webkit-scrollbar-track {
-          background: rgba(0, 0, 0, 0.2);
-          border-radius: 4px;
+          background: ${isDarkMode ? 'rgba(0, 0, 0, 0.1)' : 'rgba(0, 0, 0, 0.05)'};
         }
         
         .custom-scrollbar::-webkit-scrollbar-thumb {
-          background: rgba(255, 255, 255, 0.2);
-          border-radius: 4px;
+          background: ${isDarkMode ? 'rgba(255, 255, 255, 0.2)' : 'rgba(0, 0, 0, 0.2)'};
+          border-radius: 3px;
         }
         
         .custom-scrollbar::-webkit-scrollbar-thumb:hover {
-          background: rgba(255, 255, 255, 0.3);
-        }
-        
-        /* Skill tree styles */
-        .skill-node {
-          transition: all 0.2s ease;
-        }
-        
-        .skill-node:hover {
-          transform: scale(1.05);
-        }
-        
-        .skill-connections line {
-          transition: stroke 0.3s ease, stroke-width 0.3s ease;
-        }
-        
-        /* Glow effect for maxed skills */
-        .skill-node.bg-violet-700 {
-          box-shadow: 0 0 15px 5px rgba(139, 92, 246, 0.3);
+          background: ${isDarkMode ? 'rgba(255, 255, 255, 0.3)' : 'rgba(0, 0, 0, 0.3)'};
         }
       `}</style>
     </>

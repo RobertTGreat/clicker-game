@@ -33,7 +33,7 @@ export default function ClickerUpgradesTab({
   
   const renderUpgradeList = (upgradeList: Upgrade[], title: string, colorClass: string) => (
     <div className="mb-6">
-      <h3 className={`text-md font-semibold ${colorClass} mb-2 sticky top-0 bg-gray-900/90 py-2 z-10`}>{title}</h3>
+      <h3 className={`text-md font-semibold ${colorClass} mb-2 py-2`}>{title}</h3>
       <div className="grid gap-3">
         {upgradeList.map(upgrade => (
           <button
@@ -68,8 +68,8 @@ export default function ClickerUpgradesTab({
   );
 
   return (
-    <div className="p-4 h-full flex flex-col">
-      <h2 className="text-lg font-semibold text-blue-300 mb-4">Clicker Upgrades</h2>
+    <div className="h-full flex flex-col p-3">
+      <h2 className="text-lg font-semibold text-blue-300 mb-3">Clicker Upgrades</h2>
       <div 
         ref={scrollRef}
         className="flex-grow overflow-y-auto custom-scrollbar pr-2" 

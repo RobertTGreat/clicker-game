@@ -31,6 +31,7 @@ type UpgradesTabProps = {
     [key: string]: RefObject<HTMLDivElement>;
   };
   renderSkillTree: () => React.ReactNode;
+  playerPixels: number; // Add player pixels to check affordability
 };
 
 export default function UpgradesTab({
@@ -43,12 +44,13 @@ export default function UpgradesTab({
   setActiveUpgradeTab,
   saveScrollPosition,
   scrollRefs,
-  renderSkillTree
+  renderSkillTree,
+  playerPixels
 }: UpgradesTabProps) {
   return (
-    <div className="p-4 h-full flex flex-col">
+    <div className="h-full flex flex-col p-3">
       {/* Sub-tabs navigation */}
-      <div className="flex space-x-1 mb-4 border-b border-gray-700 pb-2">
+      <div className="flex space-x-1 mb-3 border-b border-gray-700 pb-2">
         <button 
           onClick={() => {
             // Save current scroll position before switching tab
@@ -57,7 +59,7 @@ export default function UpgradesTab({
             }
             setActiveUpgradeTab('upgrades');
           }}
-          className={`px-4 py-2 text-sm rounded-t-md transition-colors ${
+          className={`px-3 py-1 text-sm rounded-t-md transition-colors ${
             activeUpgradeTab === 'upgrades' 
               ? 'bg-blue-900/50 text-blue-300 font-semibold' 
               : 'bg-gray-800/30 text-gray-400 hover:bg-gray-800/50'
@@ -73,7 +75,7 @@ export default function UpgradesTab({
             }
             setActiveUpgradeTab('autoClickers');
           }}
-          className={`px-4 py-2 text-sm rounded-t-md transition-colors ${
+          className={`px-3 py-1 text-sm rounded-t-md transition-colors ${
             activeUpgradeTab === 'autoClickers' 
               ? 'bg-purple-900/50 text-purple-300 font-semibold' 
               : 'bg-gray-800/30 text-gray-400 hover:bg-gray-800/50'
@@ -89,7 +91,7 @@ export default function UpgradesTab({
             }
             setActiveUpgradeTab('rebirth');
           }}
-          className={`px-4 py-2 text-sm rounded-t-md transition-colors ${
+          className={`px-3 py-1 text-sm rounded-t-md transition-colors ${
             activeUpgradeTab === 'rebirth' 
               ? 'bg-violet-900/50 text-violet-300 font-semibold' 
               : 'bg-gray-800/30 text-gray-400 hover:bg-gray-800/50'
@@ -111,17 +113,17 @@ export default function UpgradesTab({
         {/* Upgrades content */}
         {activeUpgradeTab === 'upgrades' && (
           <div className="space-y-3">
-            <h3 className="text-md font-semibold text-blue-300 mb-2 sticky top-0 bg-gray-900/90 py-2 z-10">Upgrades</h3>
+            <h3 className="text-md font-semibold text-blue-300 mb-2 py-2">Upgrades</h3>
             <div className="grid gap-3">
               {upgrades.map(upgrade => (
                 <button
                   key={upgrade.id}
                   onClick={() => buyUpgrade(upgrade.id)}
-                  disabled={upgrade.purchased || upgrade.cost > 0} // Placeholder for pixel check
+                  disabled={upgrade.purchased || playerPixels < upgrade.cost}
                   className={`w-full p-3 rounded text-left text-sm border ${
                     upgrade.purchased
                       ? 'bg-green-900/20 border-green-800/30 text-green-400'
-                      : upgrade.cost > 0 // Placeholder for pixel check
+                      : playerPixels >= upgrade.cost
                       ? 'bg-blue-900/20 border-blue-800/30 text-blue-300 hover:bg-blue-900/40'
                       : 'bg-gray-900/30 border-gray-800/30 text-gray-500 cursor-not-allowed'
                   } transition-colors duration-200`}
@@ -140,15 +142,15 @@ export default function UpgradesTab({
         {/* Auto Clickers content */}
         {activeUpgradeTab === 'autoClickers' && (
           <div className="space-y-3">
-            <h3 className="text-md font-semibold text-purple-300 mb-2 sticky top-0 bg-gray-900/90 py-2 z-10">Auto Clickers</h3>
+            <h3 className="text-md font-semibold text-purple-300 mb-2 py-2">Auto Clickers</h3>
             <div className="grid gap-3">
               {autoClickers.map(clicker => (
                 <button
                   key={clicker.id}
                   onClick={() => buyAutoClicker(clicker.id)}
-                  disabled={clicker.cost > 0} // Placeholder for pixel check
+                  disabled={playerPixels < clicker.cost}
                   className={`w-full p-3 rounded text-left text-sm border ${
-                    clicker.cost > 0 // Placeholder for pixel check
+                    playerPixels >= clicker.cost
                       ? 'bg-purple-900/20 border-purple-800/30 text-purple-300 hover:bg-purple-900/40'
                       : 'bg-gray-900/30 border-gray-800/30 text-gray-500 cursor-not-allowed'
                   } transition-colors duration-200`}
@@ -162,6 +164,12 @@ export default function UpgradesTab({
                   <div className="text-sm opacity-80 mt-1">
                     +{clicker.pixelsPerSecond.toFixed(1)} pixels/sec
                     {clicker.count > 0 && ` (Total: ${formatNumber(clicker.pixelsPerSecond * clicker.count)} pixels/sec)`}
+                  </div>
+                  <div className="mt-1 bg-gray-800 rounded-full h-1.5 overflow-hidden">
+                    <div 
+                      className="bg-purple-600 h-full transition-all duration-300" 
+                      style={{ width: `${Math.min(100, (playerPixels / clicker.cost) * 100)}%` }}
+                    ></div>
                   </div>
                 </button>
               ))}

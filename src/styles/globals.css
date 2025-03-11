@@ -1,0 +1,69 @@
+:root {
+  /* Base variables, will be overridden by theme classes */
+  --bg-primary: rgb(15, 23, 42);
+  --bg-secondary: rgba(30, 41, 59, 0.8);
+  --text-primary: rgb(248, 250, 252);
+  --text-secondary: rgba(248, 250, 252, 0.7);
+  --accent: rgb(59, 130, 246);
+  --accent-light: rgb(96, 165, 250);
+  --accent-dark: rgb(29, 78, 216);
+  --border: rgba(59, 130, 246, 0.2);
+}
+
+/* Theme mode classes */
+.theme-dark {
+  --bg-primary: rgb(15, 23, 42);
+  --bg-secondary: rgba(30, 41, 59, 0.8);
+  --text-primary: rgb(248, 250, 252);
+  --text-secondary: rgba(248, 250, 252, 0.7);
+}
+
+.theme-light {
+  --bg-primary: rgb(241, 245, 249);
+  --bg-secondary: rgba(226, 232, 240, 0.8);
+  --text-primary: rgb(15, 23, 42);
+  --text-secondary: rgba(15, 23, 42, 0.7);
+}
+
+/* Theme color classes */
+.color-blue {
+  --accent: rgb(59, 130, 246);
+  --accent-light: rgb(96, 165, 250);
+  --accent-dark: rgb(29, 78, 216);
+  --border: rgba(59, 130, 246, 0.2);
+}
+
+.color-purple {
+  --accent: rgb(168, 85, 247);
+  --accent-light: rgb(192, 132, 252);
+  --accent-dark: rgb(126, 34, 206);
+  --border: rgba(168, 85, 247, 0.2);
+}
+
+.color-green {
+  --accent: rgb(34, 197, 94);
+  --accent-light: rgb(74, 222, 128);
+  --accent-dark: rgb(21, 128, 61);
+  --border: rgba(34, 197, 94, 0.2);
+}
+
+.color-amber {
+  --accent: rgb(245, 158, 11);
+  --accent-light: rgb(251, 191, 36);
+  --accent-dark: rgb(180, 83, 9);
+  --border: rgba(245, 158, 11, 0.2);
+}
+
+.color-rose {
+  --accent: rgb(244, 63, 94);
+  --accent-light: rgb(251, 113, 133);
+  --accent-dark: rgb(190, 18, 60);
+  --border: rgba(244, 63, 94, 0.2);
+}
+
+/* Apply variables to elements */
+body {
+  background-color: var(--bg-primary);
+  color: var(--text-primary);
+  transition: background-color 0.3s ease, color 0.3s ease;
+} 
