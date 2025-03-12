@@ -26,12 +26,9 @@ type PanelStates = {
 
 // Define settings type
 type ColorScheme = 'rainbow' | 'monochrome' | 'blues' | 'greens';
-type AnimationSpeed = 'slow' | 'normal' | 'fast';
 
 type Settings = {
   pixelSize: number;
-  colorScheme: ColorScheme;
-  animationSpeed: AnimationSpeed;
 };
 
 // Theme helper functions
@@ -104,8 +101,6 @@ export default function Home() {
   // Settings state
   const [settings, setSettings] = useState<Settings>({
     pixelSize: 6,
-    colorScheme: 'rainbow',
-    animationSpeed: 'normal',
   });
 
   // Add state for currently selected upgrades sub-tab
@@ -446,23 +441,23 @@ export default function Home() {
             <div className={`text-sm ${isDarkMode ? 'text-gray-300' : 'text-gray-600'}`}>{nextUpgrade.description}</div>
           </div>
           <button
-            className={`px-5 py-2 rounded-lg text-sm font-semibold transition-all ${
+            className={`pointer-events-auto px-5 py-2 rounded-lg text-sm font-semibold transition-all ${
               canAfford
                 ? 'bg-gradient-to-br from-blue-600/80 to-blue-800/80 hover:from-blue-500/80 hover:to-blue-700/80 shadow-lg shadow-blue-700/20 text-white'
                 : 'bg-gray-700/50 cursor-not-allowed opacity-60 text-gray-300'
             }`}
             onClick={(e) => {
+              e.preventDefault();
               e.stopPropagation();
+              console.log("Next upgrade button clicked:", nextUpgrade.id, "Can afford:", canAfford);
               if (canAfford) {
                 buyUpgrade(nextUpgrade.id);
               }
             }}
             disabled={!canAfford}
-            style={{
-              background: canAfford 
-                ? `linear-gradient(to bottom right, ${themeColors[themeColor as keyof typeof themeColors].light}cc, ${themeColors[themeColor as keyof typeof themeColors].dark}cc)`
-                : ''
-            }}
+            style={canAfford ? {
+              background: `linear-gradient(to bottom right, ${themeColors[themeColor as keyof typeof themeColors].light}cc, ${themeColors[themeColor as keyof typeof themeColors].dark}cc)`
+            } : {}}
           >
             {formatNumber(discountedCost)} pixels
           </button>
@@ -500,6 +495,7 @@ export default function Home() {
               <div 
                 key={upgrade.id} 
                 className="backdrop-blur-md bg-blue-900/20 rounded-xl p-4 transition-all hover:bg-blue-900/30 border border-blue-500/20 shadow-lg shadow-blue-500/5"
+                onClick={(e) => e.stopPropagation()}
               >
                 <div className="flex justify-between">
                   <div>
@@ -508,13 +504,23 @@ export default function Home() {
                     <div className="text-xs text-gray-400 mt-1">{formatNumber(gameState.clickPower)} → {formatNumber(gameState.clickPower * upgrade.multiplier)}</div>
                   </div>
                   <button
-                    className={`px-4 py-2 rounded-lg text-sm font-semibold transition-all ${
+                    className={`pointer-events-auto px-4 py-2 rounded-lg text-sm font-semibold transition-all ${
                       canAfford
                         ? 'bg-gradient-to-br from-blue-600/80 to-blue-800/80 hover:from-blue-500/80 hover:to-blue-700/80 shadow-lg shadow-blue-700/20'
                         : 'bg-gray-700/50 cursor-not-allowed'
                     }`}
-                    onClick={() => buyUpgrade(upgrade.id)}
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      console.log("Upgrade button clicked:", upgrade.id, "Can afford:", canAfford);
+                      if (canAfford) {
+                        buyUpgrade(upgrade.id);
+                      }
+                    }}
                     disabled={!canAfford}
+                    style={canAfford ? {
+                      background: `linear-gradient(to bottom right, ${themeColors[themeColor as keyof typeof themeColors].light}cc, ${themeColors[themeColor as keyof typeof themeColors].dark}cc)`
+                    } : {}}
                   >
                     {formatNumber(discountedCost)}
                   </button>
@@ -751,24 +757,6 @@ export default function Home() {
             <div className="text-sm text-right">{settings.pixelSize}</div>
           </div>
           
-                    {/* Animation Speed */}
-                    <div className={`backdrop-blur-md p-4 rounded-xl border shadow-lg ${
-            isDarkMode ? 'bg-gray-800/30 border-gray-500/20 shadow-gray-500/5' : 'bg-white/30 border-gray-300/30 shadow-gray-300/10'
-          }`}>
-            <label className={`block mb-2 text-sm ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>Animation Speed</label>
-            <select
-              value={settings.animationSpeed}
-              onChange={(e: ChangeEvent<HTMLSelectElement>) => setSettings({...settings, animationSpeed: e.target.value as AnimationSpeed})}
-              className={`w-full p-2 rounded-lg ${
-                isDarkMode ? 'bg-gray-900/50 border-gray-700' : 'bg-white border-gray-300'
-              }`}
-            >
-              <option value="slow">Slow</option>
-              <option value="normal">Normal</option>
-              <option value="fast">Fast</option>
-            </select>
-          </div>
-          
           {/* Reset Game Button */}
           <div className={`backdrop-blur-md p-4 rounded-xl border shadow-lg ${
             isDarkMode ? 'bg-gray-800/30 border-gray-500/20 shadow-gray-500/5' : 'bg-white/30 border-gray-300/30 shadow-gray-300/10'
@@ -865,6 +853,21 @@ export default function Home() {
     );
   };
 
+  // Add createRipple function for ripple effect on main area clicks
+  const createRipple = (event: React.MouseEvent<HTMLDivElement, MouseEvent>) => {
+    const target = event.currentTarget as HTMLElement;
+    const circle = document.createElement('span');
+    const diameter = 40; // fixed smaller diameter
+    const radius = diameter / 2;
+    circle.style.width = circle.style.height = `${diameter}px`;
+    const rect = target.getBoundingClientRect();
+    circle.style.left = `${event.clientX - rect.left - radius}px`;
+    circle.style.top = `${event.clientY - rect.top - radius}px`;
+    circle.classList.add('ripple');
+    target.appendChild(circle);
+    setTimeout(() => circle.remove(), 400);
+  };
+
   return (
     <>
       <div className={`flex flex-col h-screen text-white transition-colors duration-300 ${
@@ -874,15 +877,21 @@ export default function Home() {
         <div 
           className="relative flex-grow overflow-hidden backdrop-blur-md cursor-pointer"
           style={{ backgroundColor: isDarkMode ? 'rgba(0,0,0,0.8)' : 'rgba(255,255,255,0.8)' }}
-          onClick={() => handleClick()}
+          onClick={(e) => {
+            // Only process clicks on the game area itself, not on UI elements
+            if (e.target === e.currentTarget) {
+              createRipple(e);
+              handleClick();
+            }
+          }}
         >
           {/* Pixel Rain Effect - direct child of game area */}
-          <div className="absolute inset-0 z-[5] overflow-hidden">
+          <div className="absolute inset-0 z-[5] overflow-hidden pointer-events-none">
             <SimpleRain pixelsPerSecond={getPixelsPerSecond()} />
           </div>
           
           {/* Pixel visualization */}
-          <div className="relative z-[10]">
+          <div className="relative z-[10] pointer-events-none">
             {pixelPileRendering}
           </div>
 
@@ -896,6 +905,8 @@ export default function Home() {
                 settingsContent={renderSettingsContent()}
                 isDarkMode={isDarkMode}
                 themeColor={themeColor}
+                activeTab={activeTab}
+                setActiveTab={setActiveTab}
               >
                 {renderMainContent()}
               </SidebarLayout>
@@ -934,6 +945,22 @@ export default function Home() {
         
         .custom-scrollbar::-webkit-scrollbar-thumb:hover {
           background: ${isDarkMode ? 'rgba(255, 255, 255, 0.3)' : 'rgba(0, 0, 0, 0.3)'};
+        }
+
+        .ripple {
+          position: absolute;
+          border-radius: 50%;
+          background: rgba(255, 255, 255, 0.25);
+          transform: scale(0);
+          animation: ripple 400ms linear;
+          pointer-events: none;
+          z-index: 100;
+        }
+        @keyframes ripple {
+          to {
+            transform: scale(1.5);
+            opacity: 0;
+          }
         }
       `}</style>
     </>

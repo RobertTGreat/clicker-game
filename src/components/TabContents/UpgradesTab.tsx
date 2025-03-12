@@ -118,7 +118,12 @@ export default function UpgradesTab({
               {upgrades.map(upgrade => (
                 <button
                   key={upgrade.id}
-                  onClick={() => buyUpgrade(upgrade.id)}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    if (!upgrade.purchased && playerPixels >= upgrade.cost) {
+                      buyUpgrade(upgrade.id);
+                    }
+                  }}
                   disabled={upgrade.purchased || playerPixels < upgrade.cost}
                   className={`w-full p-3 rounded text-left text-sm border ${
                     upgrade.purchased
@@ -147,7 +152,12 @@ export default function UpgradesTab({
               {autoClickers.map(clicker => (
                 <button
                   key={clicker.id}
-                  onClick={() => buyAutoClicker(clicker.id)}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    if (playerPixels >= clicker.cost) {
+                      buyAutoClicker(clicker.id);
+                    }
+                  }}
                   disabled={playerPixels < clicker.cost}
                   className={`w-full p-3 rounded text-left text-sm border ${
                     playerPixels >= clicker.cost

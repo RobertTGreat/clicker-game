@@ -38,7 +38,12 @@ export default function ClickerUpgradesTab({
         {upgradeList.map(upgrade => (
           <button
             key={upgrade.id}
-            onClick={() => buyUpgrade(upgrade.id)}
+            onClick={(e) => {
+              e.stopPropagation();
+              if (!upgrade.purchased && playerPixels >= upgrade.cost) {
+                buyUpgrade(upgrade.id);
+              }
+            }}
             disabled={upgrade.purchased || playerPixels < upgrade.cost}
             className={`w-full p-3 rounded text-left text-sm border ${
               upgrade.purchased

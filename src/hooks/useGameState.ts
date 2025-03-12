@@ -791,15 +791,24 @@ export function useGameState() {
 
   // Buy upgrade
   const buyUpgrade = (upgradeId: string) => {
+    console.log(`Attempting to buy upgrade: ${upgradeId}`);
+    
     setGameState(prevState => {
       const upgrade = prevState.upgrades.find(u => u.id === upgradeId);
-      if (!upgrade || upgrade.purchased) {
+      if (!upgrade) {
+        console.error(`Upgrade with ID ${upgradeId} not found`);
+        return prevState;
+      }
+      
+      if (upgrade.purchased) {
+        console.log(`Upgrade ${upgradeId} already purchased`);
         return prevState;
       }
       
       // Check if this is a prestige upgrade that requires rebirth level
       const prestigeUpgrade = upgrade as PrestigeUpgrade;
       if (prestigeUpgrade.requiresRebirth && prevState.rebirthCount < prestigeUpgrade.requiresRebirth) {
+        console.log(`Not enough rebirths to purchase upgrade ${upgradeId}`);
         return prevState; // Not enough rebirths to purchase this
       }
       
@@ -807,7 +816,10 @@ export function useGameState() {
       const rebirthEffects = getRebirthEffects();
       const discountedCost = Math.floor(upgrade.cost * (1 - rebirthEffects.upgradeCostReduction));
       
+      console.log(`Upgrade cost: ${upgrade.cost}, Discounted cost: ${discountedCost}, Player pixels: ${prevState.pixels}`);
+      
       if (prevState.pixels < discountedCost) {
+        console.log(`Not enough pixels to purchase upgrade ${upgradeId}`);
         return prevState;
       }
 
@@ -850,11 +862,16 @@ export function useGameState() {
       }
 
       const newPixels = prevState.pixels - discountedCost;
-      console.log(`Deducting ${discountedCost} pixels for upgrade ${upgradeId} (New total: ${newPixels})`);
+      const newClickPower = prevState.clickPower * upgrade.multiplier;
+      
+      console.log(`Successfully purchased upgrade ${upgradeId}:`);
+      console.log(`- Deducted ${discountedCost} pixels (New total: ${newPixels})`);
+      console.log(`- New click power: ${newClickPower}`);
+      
       return {
         ...prevState,
         pixels: newPixels,
-        clickPower: prevState.clickPower * upgrade.multiplier,
+        clickPower: newClickPower,
         upgrades: prevState.upgrades.map(u => 
           u.id === upgradeId ? { ...u, purchased: true } : u
         ),
